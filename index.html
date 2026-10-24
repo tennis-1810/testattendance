@@ -121,8 +121,15 @@
   </select>
 
   <div id="leaveFields" hidden>
-    <label for="reason">Reason for leave</label>
-    <textarea id="reason" rows="3" maxlength="1000" placeholder="Enter reason for leave"></textarea>
+    <label for="leaveDateChoice">Leave date</label>
+    <select id="leaveDateChoice">
+      <option value="today">Today</option>
+      <option value="custom">Choose another date</option>
+    </select>
+    <div id="customDateFields" hidden>
+      <label for="leaveDate">Select leave date</label>
+      <input type="date" id="leaveDate">
+    </div>
   </div>
 
   <!-- Session -->
@@ -131,6 +138,11 @@
     <option>Morning</option>
     <option>Evening</option>
   </select>
+
+  <div id="leaveReasonFields" hidden>
+    <label for="reason">Reason for leave</label>
+    <textarea id="reason" rows="3" maxlength="1000" placeholder="Enter reason for leave"></textarea>
+  </div>
 
   <button type="button" class="btn" id="enableCamera">Enable Camera</button>
   <video id="video" autoplay playsinline muted hidden></video>
@@ -148,7 +160,7 @@
 </div>
 
 <script>
-const scriptURL = "https://script.google.com/macros/s/AKfycbyHR-EMjzafnBYZd60-XdpgVz28NzvaPIWSKzAEDIVZrQoj6nlAUUJj694kshLPfbvy/exec";
+const scriptURL = "https://script.google.com/macros/s/AKfycbz9eODq2buLCJO7Fo8X4z450KE2U5WA2cwauh0K3zEDi5hsuQV3omfZC2-_ue-EHIeMvQ/exec";
 const video = document.getElementById("video");
 const areaSelect = document.getElementById("area");
 const cameraButton = document.getElementById("enableCamera");
@@ -156,12 +168,30 @@ const leaveButton = document.getElementById("submitLeave");
 const clockButtons = Array.from(document.querySelectorAll("button[onclick]"));
 const attendanceButtons = clockButtons.filter(button => button !== leaveButton);
 const statusMessage = document.getElementById("status");
+const dateChoice = document.getElementById("leaveDateChoice");
+const leaveDateInput = document.getElementById("leaveDate");
+function todayIST() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone:"Asia/Kolkata", year:"numeric", month:"2-digit", day:"2-digit"
+  }).formatToParts(new Date());
+  const value = type => parts.find(part => part.type === type).value;
+  return value("year") + "-" + value("month") + "-" + value("day");
+}
+function updateDateChoice() {
+  const custom = dateChoice.value === "custom";
+  document.getElementById("customDateFields").hidden = !custom;
+  leaveDateInput.required = areaSelect.value === "Leave" && custom;
+  if (custom && !leaveDateInput.value) leaveDateInput.value = todayIST();
+}
+dateChoice.addEventListener("change",updateDateChoice);
 let attendanceSubmitting = false;
 let cameraStarting = false;
 
 function updateMode() {
   const leave = areaSelect.value === "Leave";
   document.getElementById("leaveFields").hidden = !leave;
+  document.getElementById("leaveReasonFields").hidden = !leave;
+  updateDateChoice();
   document.getElementById("reason").required = leave;
   leaveButton.hidden = !leave;
   attendanceButtons.forEach(button => { button.hidden = leave; });
@@ -172,7 +202,7 @@ function updateMode() {
   video.hidden = leave || !video.srcObject;
   cameraButton.hidden = leave || !!video.srcObject;
   statusMessage.textContent = leave
-    ? "Enter a reason, select Morning or Evening, and submit leave."
+    ? "Choose a leave date and session, enter a reason, and submit."
     : "Enable the camera before recording attendance.";
 }
 
@@ -246,6 +276,8 @@ async function clock(type) {
   const reason = document.getElementById("reason").value.trim();
   if (!name) { alert("Enter employee name"); return; }
   if (!session) { alert("Select session"); return; }
+  const leaveDate = dateChoice.value === "today" ? todayIST() : leaveDateInput.value;
+  if (isLeave && !/^\d{4}-\d{2}-\d{2}$/.test(leaveDate)) { alert("Select a valid leave date"); return; }
   if (isLeave && !reason) { alert("Enter reason for leave"); return; }
   if (!isLeave && (!video.videoWidth || !video.videoHeight || !video.srcObject)) {
     alert("Enable the camera and wait for the preview before recording attendance.");
@@ -260,7 +292,7 @@ async function clock(type) {
   try {
     let payload;
     if (isLeave) {
-      payload = { name,area,type:"Leave",session,reason };
+      payload = { name,area,type:"Leave",session,reason,leaveDate };
     } else {
       activeButton.textContent = "Getting location…";
       let location;
